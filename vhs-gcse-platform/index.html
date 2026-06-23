@@ -543,7 +543,107 @@ function loadMatTopics(){const subjId=document.getElementById('mat-subject').val
 
 function openMatDirect(subjId,topic){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));document.getElementById('page-materials').classList.add('active');document.querySelectorAll('.nav-item')[2].classList.add('active');document.getElementById('mat-subject').value=subjId;loadMatTopics();if(topic){const sel=document.getElementById('mat-topic');for(let i=0;i<sel.options.length;i++){if(sel.options[i].value===topic){sel.selectedIndex=i;break;}}}openMaterial();}
 
-function openMaterial(){const subjId=document.getElementById('mat-subject').value;const topic=document.getElementById('mat-topic').value;if(!topic)return;const subj=SYLLABUS.find(s=>s.id===subjId);const col=COLORS[subj?.color||'purple'];const key=subjId+'::'+topic;const mat=MATERIALS[key]||getDefaultMaterial(subjId,topic);const mastery=getMastery(key);document.getElementById('mat-title').textContent=topic;document.getElementById('mat-sub').textContent=(subj?.name||'')+(subj?.board?' · '+subj.board:'');document.getElementById('mat-content').innerHTML=`<div class="card" style="margin-bottom:16px"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px"><div style="display:flex;align-items:center;gap:10px"><span style="font-size:22px">${subj?.emoji||'📖'}</span><div><div style="font-family:'Space Grotesk',sans-serif;font-size:17px;font-weight:700">${topic}</div><span class="topic-chip" style="background:${col.sl};color:${col.sc}">${subj?.name}</span></div></div>${mastery!==null?`<div style="text-align:right"><div style="font-size:22px;font-weight:700;color:${mastery>=80?'var(--teal)':mastery>=50?'var(--amber)':'var(--coral)'}">${mastery}%</div><div style="font-size:11px;color:var(--muted)">mastery</div></div>`:'<span class="badge" style="background:var(--blue-light);color:var(--blue)">Not yet started</span>'}</div><div class="material-tabs"><button class="mat-tab active" onclick="switchMatTab('notes',this)">📝 Notes</button><button class="mat-tab" onclick="switchMatTab('videos',this)">▶️ Videos</button><button class="mat-tab" onclick="switchMatTab('flashcards',this)">🃏 Flashcards</button></div><div id="mat-notes" class="mat-panel active"><div class="notes-content">${mat.notes}</div></div><div id="mat-videos" class="mat-panel">${mat.videos.map(v=>`<a class="video-link" href="${v.url}" target="_blank" rel="noopener"><div class="video-thumb">▶</div><div class="video-info"><div class="v-title">${v.title}</div><div class="v-source">${v.source} — opens in new tab</div></div></a>`).join('')}</div><div id="mat-flashcards" class="mat-panel"><p style="font-size:13px;color:var(--muted);margin-bottom:12px">Click each card to reveal the answer.</p><div class="flashcard-grid">${mat.flashcards.map((f,i)=>`<div class="flashcard" id="fc-${i}" onclick="flipCard(${i})"><div class="fc-front">${f.front}</div><div class="fc-back">${f.back}</div><div class="fc-hint">Tap to reveal</div></div>`).join('')}</div><div style="margin-top:16px"><button class="btn btn-primary" onclick="startQuizTopic('${subjId}','${topic.replace(/'/g,"\\'")}')">Quiz me on this topic →</button></div></div></div>`;}
+function getTopicList(subjId){
+  const subj=SYLLABUS.find(s=>s.id===subjId);
+  if(!subj)return[];
+  return subj.sections.flatMap(sec=>sec.topics.map(t=>({topic:t,section:sec.name})));
+}
+
+function openMaterial(){
+  const subjId=document.getElementById('mat-subject').value;
+  const topic=document.getElementById('mat-topic').value;
+  if(!topic)return;
+  const subj=SYLLABUS.find(s=>s.id===subjId);
+  const col=COLORS[subj?.color||'purple'];
+  const key=subjId+'::'+topic;
+  const mat=MATERIALS[key]||getDefaultMaterial(subjId,topic);
+  const mastery=getMastery(key);
+
+  // Work out prev/next topic
+  const topicList=getTopicList(subjId);
+  const idx=topicList.findIndex(t=>t.topic===topic);
+  const prev=idx>0?topicList[idx-1]:null;
+  const next=idx<topicList.length-1?topicList[idx+1]:null;
+  const total=topicList.length;
+
+  document.getElementById('mat-title').textContent=topic;
+  document.getElementById('mat-sub').textContent=(subj?.name||'')+(subj?.board?' · '+subj.board:'');
+  document.getElementById('mat-content').innerHTML=`
+    <div class="card" style="margin-bottom:16px">
+
+      <!-- Topic header -->
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:22px">${subj?.emoji||'📖'}</span>
+          <div>
+            <div style="font-family:'Space Grotesk',sans-serif;font-size:17px;font-weight:700">${topic}</div>
+            <span class="topic-chip" style="background:${col.sl};color:${col.sc}">${subj?.name}</span>
+            <span style="font-size:11px;color:var(--muted);margin-left:6px">Topic ${idx+1} of ${total}</span>
+          </div>
+        </div>
+        ${mastery!==null
+          ?`<div style="text-align:right"><div style="font-size:22px;font-weight:700;color:${mastery>=80?'var(--teal)':mastery>=50?'var(--amber)':'var(--coral)'}">${mastery}%</div><div style="font-size:11px;color:var(--muted)">mastery</div></div>`
+          :'<span class="badge" style="background:var(--blue-light);color:var(--blue)">Not yet started</span>'}
+      </div>
+
+      <!-- Progress bar across all topics -->
+      <div style="margin-bottom:16px">
+        <div class="prog-bar-bg"><div class="prog-bar-fill" style="width:${Math.round((idx+1)/total*100)}%;background:${col.sc}"></div></div>
+      </div>
+
+      <!-- Tabs -->
+      <div class="material-tabs">
+        <button class="mat-tab active" onclick="switchMatTab('notes',this)">📝 Notes</button>
+        <button class="mat-tab" onclick="switchMatTab('videos',this)">▶️ Videos</button>
+        <button class="mat-tab" onclick="switchMatTab('flashcards',this)">🃏 Flashcards</button>
+      </div>
+
+      <!-- Notes -->
+      <div id="mat-notes" class="mat-panel active">
+        <div class="notes-content">${mat.notes}</div>
+      </div>
+
+      <!-- Videos -->
+      <div id="mat-videos" class="mat-panel">
+        ${mat.videos.map(v=>`
+          <a class="video-link" href="${v.url}" target="_blank" rel="noopener">
+            <div class="video-thumb">▶</div>
+            <div class="video-info"><div class="v-title">${v.title}</div><div class="v-source">${v.source} — opens in new tab</div></div>
+          </a>`).join('')}
+      </div>
+
+      <!-- Flashcards -->
+      <div id="mat-flashcards" class="mat-panel">
+        <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Click each card to reveal the answer.</p>
+        <div class="flashcard-grid">
+          ${mat.flashcards.map((f,i)=>`
+            <div class="flashcard" id="fc-${i}" onclick="flipCard(${i})">
+              <div class="fc-front">${f.front}</div>
+              <div class="fc-back">${f.back}</div>
+              <div class="fc-hint">Tap to reveal</div>
+            </div>`).join('')}
+        </div>
+        <div style="margin-top:16px">
+          <button class="btn btn-primary" onclick="startQuizTopic('${subjId}','${topic.replace(/'/g,"\\'")}')">Quiz me on this topic →</button>
+        </div>
+      </div>
+
+      <!-- Prev / Next navigation -->
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
+        <div>
+          ${prev
+            ?`<button class="btn" onclick="openMatDirect('${subjId}','${prev.topic.replace(/'/g,"\\'")}')">← ${prev.topic}</button>`
+            :'<button class="btn" disabled style="opacity:0.3">← First topic</button>'}
+        </div>
+        <span style="font-size:12px;color:var(--muted)">${idx+1} / ${total}</span>
+        <div>
+          ${next
+            ?`<button class="btn btn-primary" onclick="openMatDirect('${subjId}','${next.topic.replace(/'/g,"\\'")}')">Next: ${next.topic} →</button>`
+            :'<button class="btn btn-primary" onclick="startQuizTopic(\''+subjId+'\',\'\')">All done! Quiz this subject →</button>'}
+        </div>
+      </div>
+    </div>`;
+}
 
 function switchMatTab(panel,btn){document.querySelectorAll('.mat-tab').forEach(t=>t.classList.remove('active'));document.querySelectorAll('.mat-panel').forEach(p=>p.classList.remove('active'));btn.classList.add('active');document.getElementById('mat-'+panel).classList.add('active');}
 function flipCard(i){const el=document.getElementById('fc-'+i);el.classList.toggle('flipped');el.querySelector('.fc-hint').textContent=el.classList.contains('flipped')?'Tap to hide':'Tap to reveal';}
