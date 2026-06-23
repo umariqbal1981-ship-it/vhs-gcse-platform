@@ -737,3 +737,145 @@ function showToast(msg){const t=document.getElementById('toast');t.textContent=m
 </script>
 </body>
 </html>
+<script>
+// ── STAGE 3 UPGRADES ─────────────────────────────────
+// These functions OVERRIDE the placeholders in the main file
+
+// ── PARENT DASHBOARD ─────────────────────────────────
+async function showParentDashboard() {
+  // Check if logged in as parent
+  if (!currentUser) return;
+  const email = currentUser.email || '';
+  if (!email.includes('parent')) {
+    showToast('Parent dashboard is for parent accounts only.');
+    return;
+  }
+  nav('report', document.querySelectorAll('.nav-item')[7]);
+  renderParentReport();
+}
+
+async function renderParentReport() {
+  const div = document.getElementById('report-content');
+  div.innerHTML = `<div class="loading-bar"><div class="dots"><span></span><span></span><span></span></div>Loading full progress report...</div>`;
+
+  // Load all scores from Supabase
+  if (sb && currentUser?.id) {
+    await loadScoresFromSupabase();
+  }
+
+  const all = getAllTopics();
+  const strong = all.filter(t => getMastery(t.key) !== null && getMastery(t.key) >= 80)
+    .sort((a, b) => getMastery(b.key) - getMastery(a.key)).slice(0, 8);
+  const weak = all.filter(t => getMastery(t.key) !== null && getMastery(t.key) < 50)
+    .sort((a, b) => getMastery(a.key) - getMastery(b.key)).slice(0, 8);
+  const notStarted = all.filter(t => getMastery(t.key) === null);
+  const totQ = Object.values(localScores).reduce((a, s) => a + (s.total || 0), 0);
+  const totC = Object.values(localScores).reduce((a, s) => a + (s.correct || 0), 0);
+  const overall = totQ > 0 ? Math.round(totC / totQ * 100) : 0;
+  const streak = JSON.parse(localStorage.getItem('vhs_streak') || '{"streak":0}');
+
+  // Subject breakdown
+  const subjBreakdown = SYLLABUS.map(s => {
+    const topics = s.sections.flatMap(sec => sec.topics);
+    const scored = topics.filter(t => getScore(s.id + '::' + t).total > 0);
+    const avg = scored.length > 0 ? Math.round(scored.reduce((a, t) => {
+      const sc = getScore(s.id + '::' + t); return a + (sc.correct / sc.total);
+    }, 0) / scored.length * 100) : null;
+    return { ...s, avg, scored: scored.length, total: topics.length };
+  });
+
+  // AI summary
+  let aiSummary = '';
+  if (totQ >= 3) {
+    try {
+      const prompt = `You are a supportive GCSE tutor writing a progress report for a parent of a neurodivergent Year 10 student at Valentines High School. Write 3 encouraging but honest sentences. Overall score: ${overall}%. Questions answered: ${totQ}. Strong topics: ${strong.slice(0,3).map(t => t.topic).join(', ') || 'none yet'}. Weak topics: ${weak.slice(0,3).map(t => t.topic).join(', ') || 'none yet'}. Topics not yet started: ${notStarted.length} out of ${all.length}. Day streak: ${streak.streak}. Be warm, specific and constructive. Address the parent directly.`;
+      aiSummary = await callClaude(prompt);
+    } catch(e) {}
+  }
+
+  div.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+      <div>
+        <div class="eyebrow">Parent View</div>
+        <div class="page-title" style="margin-bottom:0">Full Progress Report</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <span class="badge" style="background:var(--teal-light);color:var(--teal);font-size:13px;padding:6px 14px">🔥 ${streak.streak} day streak</span>
+        <span class="badge" style="background:var(--purple-light);color:var(--purple);font-size:13px;padding:6px 14px">${totQ} questions answered</span>
+      </div>
+    </div>
+
+    <div class="grid-3" style="margin-bottom:20px">
+      <div class="stat-card"><div class="stat-num">${overall}%</div><div class="stat-lbl">Overall score</div></div>
+      <div class="stat-card"><div class="stat-num">${all.filter(t => getMastery(t.key) !== null).length}/${all.length}</div><div class="stat-lbl">Topics started</div></div>
+      <div class="stat-card"><div class="stat-num">${strong.length}</div><div class="stat-lbl">Topics mastered (80%+)</div></div>
+    </div>
+
+    ${aiSummary ? `<div class="card" style="background:var(--purple-light);border-color:var(--purple);margin-bottom:18px">
+      <div style="font-size:11px;font-weight:700;color:var(--purple);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px">🤖 AI Tutor Summary</div>
+      <p style="font-size:14px;line-height:1.7">${aiSummary}</p>
+    </div>` : `<div class="card" style="margin-bottom:18px;text-align:center;color:var(--muted)">
+      <p style="font-size:14px">Complete at least 3 quiz questions to unlock the AI tutor summary.</p>
+    </div>`}
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px">
+      <div class="card">
+        <div style="font-size:13px;font-weight:700;color:var(--teal);margin-bottom:12px">💪 Strongest topics</div>
+        ${strong.length > 0 ? strong.map(t => `
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+            <div style="width:36px;height:36px;border-radius:8px;background:var(--teal-light);display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--teal);font-size:13px;flex-shrink:0">${getMastery(t.key)}%</div>
+            <div><div style="font-size:13px;font-weight:500">${t.topic}</div><div style="font-size:11px;color:var(--muted)">${t.subjectName}</div></div>
+          </div>`).join('') : '<p style="font-size:13px;color:var(--muted)">Complete more quizzes to identify strengths.</p>'}
+      </div>
+      <div class="card">
+        <div style="font-size:13px;font-weight:700;color:var(--coral);margin-bottom:12px">🎯 Needs most work</div>
+        ${weak.length > 0 ? weak.map(t => `
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+            <div style="width:36px;height:36px;border-radius:8px;background:var(--coral-light);display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--coral);font-size:13px;flex-shrink:0">${getMastery(t.key)}%</div>
+            <div><div style="font-size:13px;font-weight:500">${t.topic}</div><div style="font-size:11px;color:var(--muted)">${t.subjectName}</div></div>
+          </div>`).join('') : '<p style="font-size:13px;color:var(--muted)">No weak areas yet — keep going!</p>'}
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:18px">
+      <div style="font-size:13px;font-weight:700;margin-bottom:14px">📊 Progress by subject</div>
+      ${subjBreakdown.map(s => {
+        const col = COLORS[s.color];
+        const pct = s.avg || 0;
+        const barColor = pct >= 80 ? 'var(--teal)' : pct >= 50 ? 'var(--amber)' : pct > 0 ? 'var(--coral)' : '#ddd';
+        return `<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+          <span style="font-size:20px;width:28px">${s.emoji}</span>
+          <div style="flex:1">
+            <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+              <span style="font-size:13px;font-weight:500">${s.name}</span>
+              <span style="font-size:12px;color:var(--muted)">${s.scored}/${s.total} topics · ${s.avg !== null ? s.avg + '%' : 'not started'}</span>
+            </div>
+            <div class="prog-bar-bg"><div class="prog-bar-fill" style="width:${pct}%;background:${barColor}"></div></div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+
+    ${notStarted.length > 0 ? `<div class="card">
+      <div style="font-size:13px;font-weight:700;color:var(--muted);margin-bottom:12px">⏳ Topics not yet started (${notStarted.length})</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${notStarted.slice(0, 20).map(t => `<span class="topic-chip" style="background:var(--bg);color:var(--muted)">${t.topic}</span>`).join('')}
+        ${notStarted.length > 20 ? `<span class="topic-chip" style="background:var(--bg);color:var(--muted)">+${notStarted.length - 20} more</span>` : ''}
+      </div>
+    </div>` : ''}`;
+}
+
+// Override the nav function to handle parent vs student report view
+const _origNav = nav;
+window.nav = function(id, el) {
+  _origNav(id, el);
+  if (id === 'report') {
+    const email = currentUser?.email || '';
+    if (email.includes('parent')) {
+      renderParentReport();
+    } else {
+      renderReport();
+    }
+  }
+};
+</script>
