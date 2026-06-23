@@ -328,9 +328,26 @@ textarea{width:100%;border:1px solid var(--border-md);border-radius:var(--radius
       <select id="quiz-topic" style="flex:1"></select>
       <span class="form-label">Tier:</span>
       <select id="quiz-diff"><option>Foundation</option><option>Higher</option></select>
-      <button class="btn btn-primary" onclick="startQuiz()">Start →</button>
+      <span class="form-label">Questions:</span>
+      <select id="quiz-count">
+        <option value="5">5 questions</option>
+        <option value="10" selected>10 questions</option>
+        <option value="15">15 questions</option>
+        <option value="20">20 questions</option>
+      </select>
+      <button class="btn btn-primary" onclick="startQuizSession()">Start →</button>
     </div>
   </div>
+
+  <!-- Quiz progress bar -->
+  <div id="quiz-progress-bar" style="display:none;margin-bottom:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <span style="font-size:13px;color:var(--muted)">Question <span id="q-current">1</span> of <span id="q-target">10</span></span>
+      <span style="font-size:13px;font-weight:600;color:var(--purple)" id="q-running-score">0/0</span>
+    </div>
+    <div class="prog-bar-bg"><div class="prog-bar-fill" id="q-prog-fill" style="width:0%"></div></div>
+  </div>
+
   <div class="grid-3">
     <div class="stat-card"><div class="stat-num" id="q-total">0</div><div class="stat-lbl">This session</div></div>
     <div class="stat-card"><div class="stat-num" id="q-correct">0</div><div class="stat-lbl">Correct</div></div>
@@ -338,6 +355,7 @@ textarea{width:100%;border:1px solid var(--border-md);border-radius:var(--radius
   </div>
   <div class="card" id="quiz-card"><p style="color:var(--muted);font-size:14px">Choose a subject and topic then click Start.</p></div>
   <div id="quiz-next" style="display:none;margin-top:12px"><button class="btn btn-primary" onclick="startQuiz()">Next question →</button></div>
+  <div id="quiz-complete" style="display:none;margin-top:16px"></div>
 </div>
 
 <!-- PRACTICE PAPER -->
@@ -556,6 +574,50 @@ function getSId(n){const m={Science:'Science',Mathematics:'Maths',Maths:'Maths',
 // ── QUIZ ───────────────────────────────────────────────────
 let sessionQ=0,sessionC=0,currentQuizKey='',_lastCorrect=false,_pendingConf=null;
 let timerInterval=null,timerSeconds=0;
+let quizSessionTotal=10, quizSessionCurrent=0, quizSessionActive=false;
+
+function startQuizSession(){
+  // Reset session counters
+  sessionQ=0; sessionC=0; quizSessionCurrent=0;
+  quizSessionTotal=parseInt(document.getElementById('quiz-count').value)||10;
+  quizSessionActive=true;
+  document.getElementById('q-total').textContent='0';
+  document.getElementById('q-correct').textContent='0';
+  document.getElementById('q-pct').textContent='—';
+  document.getElementById('quiz-progress-bar').style.display='block';
+  document.getElementById('quiz-complete').style.display='none';
+  document.getElementById('q-target').textContent=quizSessionTotal;
+  updateQuizProgress();
+  startQuiz();
+}
+
+function updateQuizProgress(){
+  document.getElementById('q-current').textContent=quizSessionCurrent+1;
+  document.getElementById('q-running-score').textContent=sessionC+'/'+sessionQ;
+  const pct=Math.round(quizSessionCurrent/quizSessionTotal*100);
+  document.getElementById('q-prog-fill').style.width=pct+'%';
+}
+
+function showQuizComplete(){
+  quizSessionActive=false;
+  document.getElementById('quiz-next').style.display='none';
+  document.getElementById('quiz-progress-bar').style.display='none';
+  const pct=sessionQ>0?Math.round(sessionC/sessionQ*100):0;
+  const grade=pct>=80?'🌟 Excellent!':pct>=60?'👍 Good work!':pct>=40?'📚 Keep practising!':'💪 Keep going!';
+  const barColor=pct>=80?'var(--teal)':pct>=60?'var(--purple)':pct>=40?'var(--amber)':'var(--coral)';
+  document.getElementById('quiz-complete').style.display='block';
+  document.getElementById('quiz-complete').innerHTML=`
+    <div class="card" style="text-align:center;padding:30px">
+      <div style="font-size:36px;margin-bottom:10px">${grade}</div>
+      <div style="font-family:'Space Grotesk',sans-serif;font-size:28px;font-weight:700;color:${barColor};margin-bottom:6px">${pct}%</div>
+      <div style="font-size:14px;color:var(--muted);margin-bottom:16px">You got ${sessionC} out of ${sessionQ} correct</div>
+      <div class="prog-bar-bg" style="max-width:300px;margin:0 auto 20px"><div class="prog-bar-fill" style="width:${pct}%;background:${barColor}"></div></div>
+      <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="startQuizSession()">Try again →</button>
+        <button class="btn" onclick="nav('progress',document.querySelectorAll('.nav-item')[3])">View my progress →</button>
+        <button class="btn" onclick="nav('report',document.querySelectorAll('.nav-item')[7])">See full report →</button>
+      </div>
+    </div>`;
 
 function populateQuizTopics(){const subjId=document.getElementById('quiz-subject').value;const subj=SYLLABUS.find(s=>s.id===subjId);const sel=document.getElementById('quiz-topic');sel.innerHTML='<option value="">— any topic (smart pick) —</option>';if(subj){const now=new Date();const allT=subj.sections.flatMap(sec=>sec.topics.map(t=>({topic:t,key:subjId+'::'+t})));allT.sort((a,b)=>{const sa=getScore(a.key),sb=getScore(b.key);const ad=sa.next_due&&new Date(sa.next_due)<=now,bd=sb.next_due&&new Date(sb.next_due)<=now;if(ad&&!bd)return -1;if(!ad&&bd)return 1;if(sa.total===0)return 1;if(sb.total===0)return -1;return(sa.correct/sa.total)-(sb.correct/sb.total);});allT.forEach(t=>{const o=document.createElement('option');o.value=t.topic;const pct=getMastery(t.key);const s=getScore(t.key);const isDue=s.next_due&&new Date(s.next_due)<=now;o.textContent=t.topic+(isDue?' ⏰':pct!==null?' ('+pct+'%)':' ✨');sel.appendChild(o);});}}
 
@@ -625,7 +687,30 @@ async function answerQuiz(chosen,correct,explanation){
 }
 
 function selectConf(btn,val){document.querySelectorAll('.conf-btn').forEach(b=>b.classList.remove('selected'));btn.classList.add('selected');_pendingConf=val;document.getElementById('conf-next').style.display='block';}
-async function submitConf(){const conf=_pendingConf||'ok';const parts=currentQuizKey.split('::');await saveScore(currentQuizKey,parts[0],parts[1]||'',_lastCorrect,conf);showToast('Progress saved! 💾');updateDashStats();populateQuizTopics();document.getElementById('quiz-next').style.display='block';document.getElementById('conf-area').style.display='none';}
+async function submitConf(){
+  const conf=_pendingConf||'ok';
+  const parts=currentQuizKey.split('::');
+  await saveScore(currentQuizKey,parts[0],parts[1]||'',_lastCorrect,conf);
+  showToast('Progress saved! 💾');
+  updateDashStats();
+  populateQuizTopics();
+  quizSessionCurrent++;
+  // Check if session complete
+  if(quizSessionActive && quizSessionCurrent>=quizSessionTotal){
+    showQuizComplete();
+    return;
+  }
+  // Auto-advance to next question after 1.5 seconds
+  if(quizSessionActive){
+    updateQuizProgress();
+    document.getElementById('conf-area').style.display='none';
+    document.getElementById('quiz-card').innerHTML=`<div class="loading-bar"><div class="dots"><span></span><span></span><span></span></div>Loading next question...</div>`;
+    setTimeout(()=>startQuiz(), 800);
+  } else {
+    document.getElementById('quiz-next').style.display='block';
+    document.getElementById('conf-area').style.display='none';
+  }
+}
 
 // ── PRACTICE PAPER ─────────────────────────────────────────
 let paperTimer=null,paperSeconds=0;
@@ -634,7 +719,14 @@ async function generatePaper(){
   const tier=document.getElementById('paper-tier').value;
   const div=document.getElementById('paper-content');
   div.innerHTML=`<div class="loading-bar"><div class="dots"><span></span><span></span><span></span></div>Generating your ${subj} ${tier} practice paper...</div>`;
-  const prompt=`Create a GCSE ${tier} practice paper for: ${subj}. Section A: 2 short-answer questions (2 marks each). Section B: 1 structured question with 3 parts (2+2+4 marks). Section C: 1 extended answer question (8 marks). Base all questions on real spec content. Return JSON only: {"title":"...","time_minutes":45,"total_marks":20,"sections":[{"name":"Section A","intro":"Answer all questions.","questions":[{"ref":"1","text":"...","marks":2}]}]}`;
+  const prompt=`Create a full GCSE ${tier} practice paper for: ${subj}. Include:
+Section A: 4 short-answer questions (2 marks each = 8 marks total)
+Section B: 2 structured questions, each with 3 parts (2+2+4 marks each = 16 marks total)
+Section C: 2 extended answer questions (8 marks each = 16 marks total)
+Total: 40 marks. Time: 60 minutes.
+Base ALL questions on real ${subj} specification content. Make questions varied — definitions, application, analysis, evaluation.
+Return JSON only, no markdown:
+{"title":"...","time_minutes":60,"total_marks":40,"sections":[{"name":"Section A — Short Answer","intro":"Answer all questions. 2 marks each.","questions":[{"ref":"1","text":"...","marks":2}]},{"name":"Section B — Structured Questions","intro":"Answer all questions.","questions":[{"ref":"5a","text":"...","marks":2},{"ref":"5b","text":"...","marks":2},{"ref":"5c","text":"...","marks":4}]},{"name":"Section C — Extended Writing","intro":"Answer both questions. Write in full sentences.","questions":[{"ref":"7","text":"...","marks":8}]}]}`;
   try{const paper=JSON.parse((await callClaude(prompt)).replace(/\`\`\`json|\`\`\`/g,'').trim());window._paper={paper,subj,tier};renderPaper(paper,subj,tier);}
   catch(e){div.innerHTML='<p style="color:var(--muted)">Could not generate paper — please try again.</p>';}
 }
