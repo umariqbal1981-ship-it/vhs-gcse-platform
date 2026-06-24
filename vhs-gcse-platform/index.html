@@ -639,7 +639,7 @@ function openMaterial(){
         <div>
           ${next
             ?`<button class="btn btn-primary" onclick="openMatDirect('${subjId}','${next.topic.replace(/'/g,"\\'")}')">Next: ${next.topic} →</button>`
-            :'<button class="btn btn-primary" onclick="startQuizTopic(\''+subjId+'\',\'\')">All done! Quiz this subject →</button>'}
+            :`<button class="btn btn-primary" onclick="startQuizTopic('${subjId}','')">All done! Quiz this subject →</button>`}
         </div>
       </div>
     </div>`;
