@@ -927,8 +927,7 @@ async function callClaude(prompt){const res=await fetch('/api/claude',{method:'P
 
 function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500);}
 </script>
-</body>
-</html>
+
 <script>
 // ── STAGE 3 UPGRADES ─────────────────────────────────
 // These functions OVERRIDE the placeholders in the main file
@@ -1070,4 +1069,7 @@ window.nav = function(id, el) {
     }
   }
 };
+
 </script>
+</body>
+</html>
