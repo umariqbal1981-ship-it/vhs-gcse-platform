@@ -1,0 +1,13 @@
+{
+  "version": 2,
+  "functions": {
+    "api/claude.js": {
+      "maxDuration": 60
+    }
+  },
+  "routes": [
+    { "src": "/api/config", "dest": "/api/config.js" },
+    { "src": "/api/claude", "dest": "/api/claude.js" },
+    { "src": "/(.*)", "dest": "/index.html" }
+  ]
+}
